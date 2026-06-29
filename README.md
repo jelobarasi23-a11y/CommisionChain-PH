@@ -240,3 +240,68 @@ demo script, and anticipated judge questions with answers.
 MIT. This is a hackathon prototype — see the status note at the top of
 this file and the security note in `contracts/referral/src/lib.rs` before
 considering any production use.
+
+---
+
+## Deployed contract addresses (Stellar Testnet)
+
+> These are the live testnet deployments used for judging. Replace with your own after running `stellar contract deploy` per the walkthrough.
+
+| Contract | Address |
+|---|---|
+| Referral escrow contract | `CBUXDZ34FE6KSGQL3O3NKUHSEPXXYTHGM3TCJM5LL5O3QBG55W33KMGZ` |
+| USDC Stellar Asset Contract (SAC) | `CBS6ZLQB4ZICVF4UJCHCTD3VBGZANVY3BA7BLFGA66RCJXTS3BUDIL3M` |
+
+---
+
+## Screenshots
+
+### 1. Wallet connected + XLM balance displayed
+
+![Wallet connected and XLM balance shown in the navbar](docs/screenshots/01-wallet-connected-balance.png)
+
+The nav bar shows the connected address, live XLM balance, and a pulsing green indicator confirming the Stellar Testnet connection.
+
+### 2. XLM balance screen (Send XLM page)
+
+![XLM balance on the Send XLM page](docs/screenshots/02-xlm-balance.png)
+
+The `/xlm` page shows the live XLM balance fetched from Horizon and a form to send a classic XLM payment transaction.
+
+### 3. Successful referral submission (transaction hash)
+
+![Referral submitted with Pending status and transaction proof link](docs/screenshots/03-referral-submitted.png)
+
+After submitting a referral, the Referrals page shows Pending status with a "View proof" link to Stellar Expert for the `create_referral` transaction.
+
+### 4. Approved referral + commission claimed
+
+![Referral settled with commission payout confirmed](docs/screenshots/04-commission-claimed.png)
+
+After the business approves and the agent claims, the referral shows Settled status. The Commissions page displays the payout with a link to the `claim_commission` transaction hash on Stellar Expert.
+
+---
+
+### On-Chain Transaction Proof
+
+Every action below is a real, signed Soroban contract invocation submitted to Stellar Testnet — verifiable on Stellar Expert.
+
+| Action | Contract call | Stellar Expert |
+|---|---|---|
+| Referral submitted | `create_referral` | [2a0b36e0...dceee433](https://stellar.expert/explorer/testnet/tx/2a0b36e01ee3df64cdf6c6edd7a2dc0ba3639d1b3046607d68160ea7dceee433) |
+| Referral approved (commission escrowed) | `approve_referral` | [5922d6b3...3675a0e52](https://stellar.expert/explorer/testnet/tx/5922d6b326cae83c2a46478c256974845345004401e4d65ceba598f3675a0e52) |
+| Commission claimed | `claim_commission` | [015dcc6d...564ccaa141](https://stellar.expert/explorer/testnet/tx/015dcc6d7993b7e396145c6455486b84624f75f85c9207bb4c09cd564ccaa141) |
+
+![create_referral on Stellar Expert](docs/screenshots/05-proof-create-referral.png)
+![approve_referral on Stellar Expert](docs/screenshots/06-proof-approve-referral.png)
+![claim_commission on Stellar Expert](docs/screenshots/07-proof-claim-commission.png)
+
+A second, independent referral going through the same flow:
+
+| Action | Contract call | Stellar Expert |
+|---|---|---|
+| Referral submitted | `create_referral` | [63b72989...bfb127eb](https://stellar.expert/explorer/testnet/tx/63b7298942d678142e4fdbafee49d7193895a01f02b139ca2bb84bc7bfb127eb) |
+| Commission claimed | `claim_commission` | [bedc0678...d9d248f9](https://stellar.expert/explorer/testnet/tx/bedc067849446739665216afbd9f6599c38f5cf5ca3bc8336dbb2a33d9d248f9) |
+
+![create_referral on Stellar Expert — second referral](docs/screenshots/08-proof-create-referral-2.png)
+![claim_commission on Stellar Expert — second referral](docs/screenshots/09-proof-claim-commission-2.png)
