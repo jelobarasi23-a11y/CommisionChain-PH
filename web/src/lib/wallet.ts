@@ -112,3 +112,34 @@ export async function setAllowed(): Promise<boolean> {
   if (result.error) return false;
   return result.isAllowed;
 }
+
+/**
+ * Disconnect: Freighter doesn't expose a revoke/disconnect API a dApp
+ * can call, so disconnecting here means clearing the app's own local
+ * session state (address, balance). The extension itself stays authorized
+ * until the user manually revokes it inside Freighter's settings.
+ * This function is intentionally a no-op at the SDK layer — the real
+ * work is done by WalletProvider calling setAddress(null) after this.
+ */
+export async function disconnectWallet(): Promise<void> {
+  // Nothing to call on Freighter's API — state clear is handled by caller.
+}
+
+/**
+ * Fetch the connected account's native XLM balance from Horizon.
+ * Returns a string like "9999.9931370" (same format Horizon returns),
+ * or "0" if the account has no native balance entry (shouldn't happen
+ * for any funded account, but is a safe default).
+ */
+export async function fetchXlmBalance(publicKey: string): Promise<string> {
+  const horizonUrl =
+    typeof process !== "undefined"
+      ? process.env.NEXT_PUBLIC_HORIZON_URL ?? "https://horizon-testnet.stellar.org"
+      : "https://horizon-testnet.stellar.org";
+
+  const res = await fetch(`${horizonUrl}/accounts/${publicKey}`);
+  if (!res.ok) return "0";
+  const data: { balances?: { asset_type: string; balance: string }[] } = await res.json();
+  const native = data.balances?.find((b) => b.asset_type === "native");
+  return native?.balance ?? "0";
+}

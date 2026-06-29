@@ -1,8 +1,11 @@
 import {
   rpc,
+  Horizon,
   TransactionBuilder,
   Contract,
   Address,
+  Operation,
+  Asset,
   nativeToScVal,
   scValToNative,
   BASE_FEE,
@@ -180,3 +183,57 @@ export async function simulateReadOnlyCall(
 }
 
 export { u32ScVal, i128ScVal, addressScVal, NETWORK_PASSPHRASE, SOROBAN_RPC_URL };
+
+// ── Classic Stellar (Horizon) helpers ─────────────────────────────────────
+// These use the classic payment operation rather than Soroban contract calls,
+// which satisfies the Level 1 checklist requirement for "sends XLM transaction
+// on Stellar Testnet" alongside the Soroban-based commission escrow flow.
+
+const HORIZON_URL =
+  process.env.NEXT_PUBLIC_HORIZON_URL ?? "https://horizon-testnet.stellar.org";
+
+function getHorizonServer(): Horizon.Server {
+  return new Horizon.Server(HORIZON_URL);
+}
+
+/**
+ * Build an unsigned classic XLM payment transaction XDR using
+ * Operation.payment. Returns the XDR string for Freighter to sign —
+ * the same build → sign → submit pattern as the Soroban contract calls.
+ */
+export async function buildXlmPaymentXdr(opts: {
+  sourcePublicKey: string;
+  destinationPublicKey: string;
+  amount: string;
+}): Promise<string> {
+  const server  = getHorizonServer();
+  const account = await server.loadAccount(opts.sourcePublicKey);
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      Operation.payment({
+        destination: opts.destinationPublicKey,
+        asset:       Asset.native(),
+        amount:      opts.amount,
+      })
+    )
+    .setTimeout(120)
+    .build();
+
+  return tx.toXDR();
+}
+
+/**
+ * Submit a Freighter-signed classic Horizon transaction (e.g. XLM payment).
+ * Distinct from `submitSignedTransaction` which uses Soroban RPC — classic
+ * transactions go through Horizon's REST API instead.
+ */
+export async function submitClassicTransaction(signedXdr: string): Promise<{ hash: string }> {
+  const server = getHorizonServer();
+  const tx     = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
+  const result = await server.submitTransaction(tx);
+  return { hash: result.hash };
+}
