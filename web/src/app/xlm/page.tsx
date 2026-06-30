@@ -8,16 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { TransactionOverlay, type TxStage } from "@/components/TransactionOverlay";
 import { useWallet } from "@/components/WalletProvider";
-import { signTransactionXdr } from "@/lib/wallet";
 import { explorerTxUrl } from "@/lib/format";
 import { Send, ExternalLink, CheckCircle2, Wallet, RefreshCw } from "lucide-react";
 import Link from "next/link";
 
-const NETWORK_PASSPHRASE =
-  process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015";
 
 export default function SendXlmPage() {
-  const { address, xlmBalance, connect, refreshBalance } = useWallet();
+  const { address, xlmBalance, connect, refreshBalance, signXdr } = useWallet();
 
   const [destination, setDestination] = React.useState("");
   const [amount, setAmount]           = React.useState("");
@@ -68,7 +65,7 @@ export default function SendXlmPage() {
 
       // Sign
       setStage("awaiting-signature");
-      const signedXdr = await signTransactionXdr(buildData.xdr, NETWORK_PASSPHRASE, address);
+      const signedXdr = await signXdr(buildData.xdr);
 
       // Submit
       setStage("submitting");
@@ -128,7 +125,7 @@ export default function SendXlmPage() {
               {!address ? (
                 <div className="flex flex-col gap-3">
                   <p className="text-sm text-muted-foreground">Connect your wallet to see your balance.</p>
-                  <Button onClick={connect} size="sm" className="w-fit">
+                  <Button onClick={() => connect('freighter')} size="sm" className="w-fit">
                     <Wallet className="h-3.5 w-3.5" />
                     Connect Wallet
                   </Button>

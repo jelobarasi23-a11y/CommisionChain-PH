@@ -7,14 +7,11 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { TransactionOverlay, type TxStage } from "./TransactionOverlay";
-import { signTransactionXdr } from "@/lib/wallet";
 import { Send, Info } from "lucide-react";
 
-const NETWORK_PASSPHRASE =
-  process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015";
 
 export function ReferralForm() {
-  const { address, connect } = useWallet();
+  const { address, connect, signXdr } = useWallet();
   const router = useRouter();
 
   const [businessPublicKey, setBusinessPublicKey] = React.useState("");
@@ -58,7 +55,7 @@ export function ReferralForm() {
       if (!buildRes.ok) throw new Error(buildData.error ?? "Failed to build transaction.");
 
       setStage("awaiting-signature");
-      const signedXdr = await signTransactionXdr(buildData.xdr, NETWORK_PASSPHRASE, address);
+      const signedXdr = await signXdr(buildData.xdr);
 
       setStage("submitting");
       const submitRes  = await fetch("/api/referrals/create", {
@@ -85,7 +82,7 @@ export function ReferralForm() {
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--gold))]" />
             <p className="leading-snug text-muted-foreground">
               You need a connected wallet to submit a referral.{" "}
-              <button type="button" onClick={connect} className="font-semibold text-primary hover:underline">
+              <button type="button" onClick={() => connect('freighter')} className="font-semibold text-primary hover:underline">
                 Connect Freighter
               </button>{" "}
               — a free browser extension at{" "}

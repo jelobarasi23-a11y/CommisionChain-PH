@@ -2,26 +2,25 @@
 
 import * as React from "react";
 import {
-  connectWallet,
-  disconnectWallet,
-  getConnectedAddress,
-  isSiteAllowed,
-  verifyNetwork,
-  fetchXlmBalance,
-  WalletError,
+  connectWallet, connectAlbedo, disconnectWallet,
+  signWithWallet, getConnectedAddress, isSiteAllowed,
+  verifyNetwork, fetchXlmBalance, WalletError,
 } from "@/lib/wallet";
 
-const NETWORK_PASSPHRASE =
-  process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015";
+const PASSPHRASE = process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015";
+
+export type WalletType = "freighter" | "albedo";
 
 type WalletContextValue = {
-  address:      string | null;
-  xlmBalance:   string | null;      // native XLM balance, e.g. "9999.9931370"
-  isConnecting: boolean;
-  error:        string | null;
-  connect:      () => Promise<void>;
-  disconnect:   () => void;
+  address:        string | null;
+  xlmBalance:     string | null;
+  walletType:     WalletType | null;
+  isConnecting:   boolean;
+  error:          string | null;
+  connect:        (type: WalletType) => Promise<void>;
+  disconnect:     () => void;
   refreshBalance: () => Promise<void>;
+  signXdr:        (xdr: string) => Promise<string>;
 };
 
 const WalletContext = React.createContext<WalletContextValue | null>(null);
@@ -29,69 +28,53 @@ const WalletContext = React.createContext<WalletContextValue | null>(null);
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address,      setAddress]      = React.useState<string | null>(null);
   const [xlmBalance,   setXlmBalance]   = React.useState<string | null>(null);
+  const [walletType,   setWalletType]   = React.useState<WalletType | null>(null);
   const [isConnecting, setIsConnecting] = React.useState(false);
   const [error,        setError]        = React.useState<string | null>(null);
 
-  // Fetch and cache the XLM balance whenever the address changes
   const refreshBalance = React.useCallback(async () => {
     if (!address) { setXlmBalance(null); return; }
-    try {
-      const bal = await fetchXlmBalance(address);
-      setXlmBalance(bal);
-    } catch {
-      setXlmBalance(null);
-    }
+    try { setXlmBalance(await fetchXlmBalance(address)); } catch { setXlmBalance(null); }
   }, [address]);
 
-  // On first load, silently restore the connection if already granted
+  // Restore previous Freighter session on page load
   React.useEffect(() => {
     (async () => {
       try {
-        const allowed = await isSiteAllowed();
-        if (allowed) {
-          const existing = await getConnectedAddress();
-          if (existing) setAddress(existing);
+        if (await isSiteAllowed()) {
+          const a = await getConnectedAddress();
+          if (a) { setAddress(a); setWalletType("freighter"); }
         }
-      } catch {
-        // Silent — best-effort background check
-      }
+      } catch { /* silent */ }
     })();
   }, []);
 
-  // Refresh balance whenever address changes
-  React.useEffect(() => {
-    refreshBalance();
-  }, [refreshBalance]);
+  React.useEffect(() => { refreshBalance(); }, [refreshBalance]);
 
-  const connect = React.useCallback(async () => {
-    setIsConnecting(true);
-    setError(null);
+  const connect = React.useCallback(async (type: WalletType) => {
+    setIsConnecting(true); setError(null);
     try {
-      const addr = await connectWallet();
-      await verifyNetwork(NETWORK_PASSPHRASE);
-      setAddress(addr);
+      const addr = type === "albedo" ? await connectAlbedo() : await connectWallet();
+      if (type === "freighter") await verifyNetwork(PASSPHRASE);
+      setAddress(addr); setWalletType(type);
     } catch (err) {
-      const message = err instanceof WalletError ? err.message : "Failed to connect wallet.";
-      setError(message);
-      setAddress(null);
-    } finally {
-      setIsConnecting(false);
-    }
+      setError(err instanceof WalletError ? err.message : `Failed to connect ${type}.`);
+      setAddress(null); setWalletType(null);
+    } finally { setIsConnecting(false); }
   }, []);
 
   const disconnect = React.useCallback(() => {
-    // disconnectWallet() is a no-op at the SDK level (Freighter has no
-    // revoke API); clearing local state here is the disconnect behaviour.
     disconnectWallet().catch(() => {});
-    setAddress(null);
-    setXlmBalance(null);
-    setError(null);
+    setAddress(null); setXlmBalance(null); setWalletType(null); setError(null);
   }, []);
 
+  const signXdr = React.useCallback(async (xdr: string): Promise<string> => {
+    if (!address || !walletType) throw new WalletError("No wallet connected.");
+    return signWithWallet(xdr, PASSPHRASE, address, walletType);
+  }, [address, walletType]);
+
   return (
-    <WalletContext.Provider
-      value={{ address, xlmBalance, isConnecting, error, connect, disconnect, refreshBalance }}
-    >
+    <WalletContext.Provider value={{ address, xlmBalance, walletType, isConnecting, error, connect, disconnect, refreshBalance, signXdr }}>
       {children}
     </WalletContext.Provider>
   );

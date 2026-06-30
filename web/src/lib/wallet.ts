@@ -143,3 +143,27 @@ export async function fetchXlmBalance(publicKey: string): Promise<string> {
   const native = data.balances?.find((b) => b.asset_type === "native");
   return native?.balance ?? "0";
 }
+
+// ── Albedo wallet ─────────────────────────────────────────────────────────────
+export async function connectAlbedo(): Promise<string> {
+  const { default: albedo } = await import("@albedo-link/intent");
+  const result = await albedo.publicKey({ token: Math.random().toString(36).slice(2) });
+  return result.pubkey;
+}
+
+export async function signTransactionXdrAlbedo(xdr: string, address: string): Promise<string> {
+  const { default: albedo } = await import("@albedo-link/intent");
+  const result = await albedo.tx({ xdr, pubkey: address, network: "testnet" });
+  return result.signed_envelope_xdr;
+}
+
+export async function signWithWallet(
+  xdr: string,
+  networkPassphrase: string,
+  address: string,
+  walletType: "freighter" | "albedo"
+): Promise<string> {
+  return walletType === "albedo"
+    ? signTransactionXdrAlbedo(xdr, address)
+    : signTransactionXdr(xdr, networkPassphrase, address);
+}

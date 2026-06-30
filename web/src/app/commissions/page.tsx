@@ -33,7 +33,7 @@ export default function CommissionsPage() {
             </div>
             <div>
               <p className="text-sm font-medium">Connect your wallet to see your commission history.</p>
-              <button onClick={connect} className="mt-0.5 text-xs font-semibold text-primary hover:underline">
+              <button onClick={() => connect('freighter')} className="mt-0.5 text-xs font-semibold text-primary hover:underline">
                 Connect now →
               </button>
             </div>
