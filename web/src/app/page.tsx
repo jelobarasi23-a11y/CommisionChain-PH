@@ -7,6 +7,7 @@ import { StatCard } from "@/components/StatCard";
 import { ReferralTable } from "@/components/ReferralTable";
 import { PipelineVisualizer } from "@/components/PipelineVisualizer";
 import { LiveRefreshIndicator } from "@/components/LiveRefreshIndicator";
+import { ContractEventFeed } from "@/components/ContractEventFeed";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useWallet } from "@/components/WalletProvider";
@@ -143,38 +144,52 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Recent referrals + live refresh */}
-        <Card>
-          <CardHeader className="flex-row items-center justify-between gap-4">
-            <div>
-              <CardTitle>Recent referrals</CardTitle>
-              <CardDescription>Click any row to see its full transaction history.</CardDescription>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <LiveRefreshIndicator onRefresh={refresh} intervalMs={30_000} />
-              <Link href="/referrals">
-                <Button variant="ghost" size="sm" className="text-primary hover:text-primary">
-                  View all <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-3 py-2">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-14 w-full rounded-lg animate-shimmer" />
-                ))}
-              </div>
-            ) : (
-              <ReferralTable
-                referrals={referrals.slice(0, 5)}
-                onChanged={refresh}
-                emptyMessage="No referrals yet — submit the first one."
-              />
-            )}
-          </CardContent>
-        </Card>
+        {/* Recent referrals + live event feed */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader className="flex-row items-center justify-between gap-4">
+                <div>
+                  <CardTitle>Recent referrals</CardTitle>
+                  <CardDescription>Click any row to see its full transaction history.</CardDescription>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <LiveRefreshIndicator onRefresh={refresh} intervalMs={30_000} />
+                  <Link href="/referrals">
+                    <Button variant="ghost" size="sm" className="text-primary hover:text-primary">
+                      View all <ArrowRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <div className="space-y-3 py-2">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-14 w-full rounded-lg animate-shimmer" />
+                    ))}
+                  </div>
+                ) : (
+                  <ReferralTable
+                    referrals={referrals.slice(0, 5)}
+                    onChanged={refresh}
+                    emptyMessage="No referrals yet — submit the first one."
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="lg:col-span-1">
+            <CardHeader>
+              <CardTitle>On-chain events</CardTitle>
+              <CardDescription>Live from Stellar RPC — emitted by the contract on every action.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ContractEventFeed />
+            </CardContent>
+          </Card>
+        </div>
       </main>
     </div>
   );

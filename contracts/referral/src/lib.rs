@@ -27,7 +27,7 @@
 //! at mainnet funds without an independent professional audit first.
 #![no_std]
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, token, Address, Env, Vec};
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, Vec};
 
 #[cfg(test)]
 mod test;
@@ -162,6 +162,8 @@ impl ReferralContract {
         ids.push_back(id);
         env.storage().persistent().set(&DataKey::AllIds, &ids);
 
+        env.events().publish((symbol_short!("referral"), symbol_short!("created")), id);
+
         Ok(id)
     }
 
@@ -212,6 +214,8 @@ impl ReferralContract {
             .persistent()
             .set(&DataKey::Referral(referral_id), &referral);
 
+        env.events().publish((symbol_short!("referral"), symbol_short!("approved")), referral_id);
+
         Ok(())
     }
 
@@ -240,6 +244,8 @@ impl ReferralContract {
         env.storage()
             .persistent()
             .set(&DataKey::Referral(referral_id), &referral);
+
+        env.events().publish((symbol_short!("referral"), symbol_short!("rejected")), referral_id);
 
         Ok(())
     }
@@ -292,6 +298,8 @@ impl ReferralContract {
         env.storage()
             .persistent()
             .set(&DataKey::Referral(referral_id), &referral);
+
+        env.events().publish((symbol_short!("referral"), symbol_short!("claimed")), referral_id);
 
         Ok(())
     }
