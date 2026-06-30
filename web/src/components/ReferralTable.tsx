@@ -10,7 +10,6 @@ import { ConfettiOverlay } from "./ConfettiOverlay";
 import { useToast } from "./Toast";
 import { formatAmount, formatDate, explorerTxUrl } from "@/lib/format";
 import { getViewerRole, statusCaption } from "@/lib/status";
-import { signTransactionXdr } from "@/lib/wallet";
 import type { Referral } from "@/lib/types";
 import {
   ExternalLink, Check, X, Banknote, Inbox,
@@ -19,8 +18,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const NETWORK_PASSPHRASE =
-  process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015";
 
 type Action = "approve" | "reject" | "claim";
 
@@ -61,7 +58,8 @@ async function runAction(
   action: Action,
   onChainId: number,
   address: string,
-  onStage: (s: TxStage) => void
+  onStage: (s: TxStage) => void,
+  signXdr: (xdr: string) => Promise<string>
 ): Promise<{ txHash: string }> {
   const endpoint = `/api/referrals/${action}`;
   const bodyBase = action === "claim"
@@ -74,7 +72,7 @@ async function runAction(
   if (!buildRes.ok) throw new Error(buildData.error ?? `Failed to build ${action} transaction.`);
 
   onStage("awaiting-signature");
-  const signedXdr = await signTransactionXdr(buildData.xdr, NETWORK_PASSPHRASE, address);
+  const signedXdr = await signXdr(buildData.xdr);
 
   onStage("submitting");
   const submitRes  = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ step: "submit", signedXdr, ...bodyBase }) });
@@ -140,7 +138,7 @@ export function ReferralTable({
   onChanged?: () => void;
   emptyMessage?: string;
 }) {
-  const { address }   = useWallet();
+  const { address, signXdr } = useWallet();
   const { showToast } = useToast();
 
   const [pendingRow, setPendingRow]     = React.useState<number | null>(null);
@@ -150,17 +148,20 @@ export function ReferralTable({
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [expandedRow, setExpandedRow]   = React.useState<string | null>(null);
   const [confetti, setConfetti]         = React.useState(false);
+  // Store the last attempted action/referral so retry can replay it
+  const lastAttempt = React.useRef<{ action: Action; referral: Referral } | null>(null);
 
   async function handleAction(action: Action, referral: Referral, e: React.MouseEvent) {
-    e.stopPropagation(); // don't toggle row expand
+    e.stopPropagation();
     if (!address) return;
+    lastAttempt.current = { action, referral };
     setPendingRow(referral.onChainId);
     setActiveAction(action);
     setErrorMessage(null);
     setOverlayOpen(true);
     setStage("building");
     try {
-      await runAction(action, referral.onChainId, address, setStage);
+      await runAction(action, referral.onChainId, address, setStage, signXdr);
       setStage("success");
       showToast(ACTION_SUCCESS[action](referral), "success");
       if (action === "claim") {
@@ -173,6 +174,26 @@ export function ReferralTable({
       setStage("error");
     } finally {
       setPendingRow(null);
+    }
+  }
+
+  async function handleRetry() {
+    if (!lastAttempt.current || !address) return;
+    const { action, referral } = lastAttempt.current;
+    setErrorMessage(null);
+    setStage("building");
+    try {
+      await runAction(action, referral.onChainId, address, setStage, signXdr);
+      setStage("success");
+      showToast(ACTION_SUCCESS[action](referral), "success");
+      if (action === "claim") {
+        setConfetti(true);
+        window.setTimeout(() => setConfetti(false), 4000);
+      }
+      onChanged?.();
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setStage("error");
     }
   }
 
@@ -190,7 +211,9 @@ export function ReferralTable({
   return (
     <>
       <ConfettiOverlay trigger={confetti} />
-      <div className="overflow-x-auto">
+
+      {/* Desktop / tablet — full table, hidden below md breakpoint */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-white/6 text-xs uppercase tracking-wider text-muted-foreground">
@@ -211,7 +234,6 @@ export function ReferralTable({
 
               return (
                 <React.Fragment key={r.id}>
-                  {/* Main row */}
                   <tr
                     style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
                     onClick={() => setExpandedRow(isExpanded ? null : r.id)}
@@ -221,7 +243,6 @@ export function ReferralTable({
                       !isExpanded && "last:border-0"
                     )}
                   >
-                    {/* Expand chevron */}
                     <td className="py-4 pl-1 pr-2 w-5">
                       {isExpanded
                         ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
@@ -266,7 +287,6 @@ export function ReferralTable({
                     </td>
                   </tr>
 
-                  {/* Expandable timeline row */}
                   {isExpanded && (
                     <tr className="border-b border-white/4 bg-night/40">
                       <td colSpan={7} className="px-8 pb-5 pt-3">
@@ -284,12 +304,84 @@ export function ReferralTable({
         </table>
       </div>
 
+      {/* Mobile — stacked cards, shown only below md breakpoint */}
+      <div className="md:hidden flex flex-col gap-3">
+        {referrals.map((r, i) => {
+          const role         = getViewerRole(r, address);
+          const isRowPending = pendingRow === r.onChainId;
+          const isExpanded   = expandedRow === r.id;
+
+          return (
+            <div
+              key={r.id}
+              style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+              className="animate-in fade-in slide-in-from-bottom-1 rounded-xl border border-white/6 bg-night/40 p-4 duration-300"
+            >
+              <button
+                onClick={() => setExpandedRow(isExpanded ? null : r.id)}
+                className="flex w-full items-start justify-between gap-3 text-left"
+              >
+                <div className="flex items-start gap-3 min-w-0">
+                  <ApprovalStamp status={r.status} size="sm" />
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{r.clientName}</p>
+                    <p className="text-xs text-muted-foreground truncate">{r.businessName}</p>
+                    <p className="mt-1 text-xs leading-snug text-muted-foreground">{statusCaption(r, role)}</p>
+                  </div>
+                </div>
+                {isExpanded
+                  ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground mt-1" />
+                  : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground mt-1" />
+                }
+              </button>
+
+              <div className="mt-3 flex items-center justify-between text-xs">
+                <span className="font-mono font-semibold text-primary tabular-nums">
+                  {formatAmount(r.commissionAmount)}
+                </span>
+                <span className="text-muted-foreground">{formatDate(r.createdAt)}</span>
+              </div>
+
+              {(role === "business" && r.status === "PENDING") || (role === "agent" && r.status === "APPROVED") ? (
+                <div className="mt-3 flex gap-2">
+                  {role === "business" && r.status === "PENDING" && (
+                    <>
+                      <Button size="sm" variant="default" className="flex-1" disabled={isRowPending} onClick={(e) => handleAction("approve", r, e)}>
+                        <Check className="h-3.5 w-3.5" /> Approve
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex-1" disabled={isRowPending} onClick={(e) => handleAction("reject", r, e)}>
+                        <X className="h-3.5 w-3.5" /> Reject
+                      </Button>
+                    </>
+                  )}
+                  {role === "agent" && r.status === "APPROVED" && (
+                    <Button size="sm" variant="accent" className="w-full" disabled={isRowPending} onClick={(e) => handleAction("claim", r, e)}>
+                      <Banknote className="h-3.5 w-3.5" /> Claim
+                    </Button>
+                  )}
+                </div>
+              ) : null}
+
+              {isExpanded && (
+                <div className="mt-4 border-t border-white/6 pt-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Transaction history
+                  </p>
+                  <TxTimeline referral={r} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
       <TransactionOverlay
         open={overlayOpen}
         stage={stage}
         title={activeAction ? ACTION_TITLE[activeAction] : ""}
         errorMessage={errorMessage}
         onClose={() => setOverlayOpen(false)}
+        onRetry={handleRetry}
       />
     </>
   );
