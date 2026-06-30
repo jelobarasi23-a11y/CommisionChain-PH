@@ -145,42 +145,6 @@ export async function submitSignedTransaction(signedXdr: string): Promise<Submit
   );
 }
 
-/** Read-only contract calls (get_referral / get_all_referrals) go through
- * simulation only — no signing, no fees, no network submission needed,
- * since nothing is being written on-chain.
- *
- * Soroban still requires a transaction shell with a real, existing
- * account as its source even for a call that's only ever simulated, so
- * `sourcePublicKey` must be a funded testnet account (e.g. the public key
- * of whichever agent or business is currently viewing the page — any
- * funded account works equally well here since the source account's
- * identity has no bearing on a read-only call's result). */
-export async function simulateReadOnlyCall(
-  sourcePublicKey: string,
-  method: string,
-  args: xdr.ScVal[]
-): Promise<unknown> {
-  const server = getServer();
-  const contract = new Contract(REFERRAL_CONTRACT_ID);
-  const sourceAccount = await server.getAccount(sourcePublicKey);
-
-  const tx = new TransactionBuilder(sourceAccount, {
-    fee: BASE_FEE,
-    networkPassphrase: NETWORK_PASSPHRASE,
-  })
-    .addOperation(contract.call(method, ...args))
-    .setTimeout(30)
-    .build();
-
-  const sim = await server.simulateTransaction(tx);
-  if (rpc.Api.isSimulationError(sim)) {
-    throw new Error(`Simulation failed: ${sim.error}`);
-  }
-  if (rpc.Api.isSimulationSuccess(sim) && sim.result) {
-    return scValToNative(sim.result.retval);
-  }
-  return undefined;
-}
 
 export { u32ScVal, i128ScVal, addressScVal, NETWORK_PASSPHRASE, SOROBAN_RPC_URL };
 

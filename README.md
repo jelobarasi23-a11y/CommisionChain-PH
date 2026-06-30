@@ -219,6 +219,20 @@ double-approve attempt).
 > real, fully-installed `@supabase/supabase-js` package, though — that
 > part isn't a stand-in.
 
+### Frontend tests
+
+```bash
+cd web
+npm test
+```
+
+25 tests across 3 files using Vitest + React Testing Library, covering the
+formatting helpers (`formatAmount`, `toStroops`/`fromStroops` round-trip,
+address shortening, explorer URL builders), the role/status caption logic
+that decides what each viewer sees and which buttons appear
+(`getViewerRole`, `statusCaption`), and the `ApprovalStamp` component's
+rendering across all four referral states.
+
 ## Deployment
 
 See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the full guide — using
@@ -251,6 +265,21 @@ considering any production use.
 |---|---|
 | Referral escrow contract | `CBUXDZ34FE6KSGQL3O3NKUHSEPXXYTHGM3TCJM5LL5O3QBG55W33KMGZ` |
 | USDC Stellar Asset Contract (SAC) | `CBS6ZLQB4ZICVF4UJCHCTD3VBGZANVY3BA7BLFGA66RCJXTS3BUDIL3M` |
+
+### Sample transaction hashes (Stellar Testnet)
+
+| Action | Contract call | Stellar Expert |
+|---|---|---|
+| Referral submitted | `create_referral` | [2a0b36e0...dceee433](https://stellar.expert/explorer/testnet/tx/2a0b36e01ee3df64cdf6c6edd7a2dc0ba3639d1b3046607d68160ea7dceee433) |
+| Commission escrowed | `approve_referral` | [5922d6b3...3675a0e52](https://stellar.expert/explorer/testnet/tx/5922d6b326cae83c2a46478c256974845345004401e4d65ceba598f3675a0e52) |
+| Commission claimed | `claim_commission` | [015dcc6d...564ccaa141](https://stellar.expert/explorer/testnet/tx/015dcc6d7993b7e396145c6455486b84624f75f85c9207bb4c09cd564ccaa141) |
+
+Second independent referral (same full lifecycle):
+
+| Action | Contract call | Stellar Expert |
+|---|---|---|
+| Referral submitted | `create_referral` | [63b72989...bfb127eb](https://stellar.expert/explorer/testnet/tx/63b7298942d678142e4fdbafee49d7193895a01f02b139ca2bb84bc7bfb127eb) |
+| Commission claimed | `claim_commission` | [bedc0678...d9d248f9](https://stellar.expert/explorer/testnet/tx/bedc067849446739665216afbd9f6599c38f5cf5ca3bc8336dbb2a33d9d248f9) |
 
 ---
 
@@ -305,3 +334,150 @@ A second, independent referral going through the same flow:
 
 ![create_referral on Stellar Expert — second referral](docs/screenshots/08-proof-create-referral-2.png)
 ![claim_commission on Stellar Expert — second referral](docs/screenshots/09-proof-claim-commission-2.png)
+
+---
+
+## Multi-wallet support
+
+CommissionChain PH supports two Stellar wallets, selectable via a wallet
+picker modal when you click **Connect Wallet**:
+
+| Wallet | Type | How it works |
+|---|---|---|
+| **Freighter** | Browser extension | Install from [freighter.app](https://freighter.app) |
+| **Albedo** | Web-based, no install | Authorizes transactions in a secure popup at [albedo.link](https://albedo.link) |
+
+`WalletProvider` exposes a single `signXdr(xdr)` function that routes to
+whichever wallet is connected, so every transaction-signing call site in
+the app (`ReferralForm`, `ReferralTable`, the Send XLM page) works
+identically regardless of which wallet the user picked.
+
+## Real-time contract events
+
+Every state-changing contract function — `create_referral`,
+`approve_referral`, `reject_referral`, `claim_commission` — publishes a
+Soroban event with topics `("referral", "<action>")` and the referral id
+as data (`contracts/referral/src/lib.rs`).
+
+The frontend (`src/lib/events.ts`) polls `rpc.Server.getEvents()` every 15
+seconds and displays new events in the **On-chain events** feed on the
+dashboard (`src/components/ContractEventFeed.tsx`) — updating
+automatically when any user takes an action on the deployed contract,
+without a page refresh.
+
+## CI/CD
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+- `cargo test` against the Soroban contract (all 5 tests)
+- `stellar contract build` to confirm the WASM compiles
+- TypeScript type-check (`tsc --noEmit`)
+- Frontend test suite (`npm test`)
+- Next.js production build
+
+## Deployment automation
+
+`scripts/deploy.sh` wraps the manual `stellar contract build` / `deploy` /
+`initialize` sequence into one repeatable command:
+
+```bash
+./scripts/deploy.sh --network testnet --admin admin --token <TOKEN_CONTRACT_ID>
+```
+
+It builds, runs the test suite, deploys, initializes, and prints the
+`NEXT_PUBLIC_REFERRAL_CONTRACT_ID` value ready to paste into `web/.env`.
+
+---
+
+## Pushing this project to GitHub
+
+This project has never been pushed to a Git repository — do that before
+submitting. Two things matter here: making sure secrets never get
+committed, and building a real, incremental commit history rather than
+one giant "final" commit.
+
+### 1. Initialize Git and verify `.env` is excluded
+
+```bash
+cd commissionchain-ph
+git init
+git status
+```
+
+`web/.env` should **not** appear in the output — `.gitignore` already
+excludes it. If you ever see it listed, stop and fix `.gitignore` before
+continuing; that file holds your Supabase secret key and should never
+reach a public repository. (`web/.env.example` — the template with
+placeholder values — is fine to commit and already tracked.)
+
+### 2. Commit incrementally, not as one block
+
+A single "final commit" reads as a red flag to reviewers regardless of
+code quality — it suggests the work wasn't actually built over time. Stage
+and commit in logical chunks instead:
+
+```bash
+git add contracts/
+git commit -m "feat: Soroban referral escrow contract with 5 passing tests"
+
+git add web/src/lib/ web/src/components/ui/ web/package.json
+git commit -m "feat: Next.js scaffold, wallet integration, Supabase client"
+
+git add web/src/app/ web/src/components/ReferralForm.tsx web/src/components/ReferralTable.tsx
+git commit -m "feat: referral submission, approval, and claim flow"
+
+git add web/src/components/WalletSelectModal.tsx web/src/lib/wallet.ts
+git commit -m "feat: multi-wallet support (Freighter + Albedo)"
+
+git add web/src/lib/events.ts web/src/components/ContractEventFeed.tsx contracts/referral/src/lib.rs
+git commit -m "feat: Soroban contract events + live event feed"
+
+git add web/src/app/xlm/ web/src/app/api/xlm/
+git commit -m "feat: classic XLM payment flow and balance display"
+
+git add web/src/lib/__tests__/ web/src/components/__tests__/ web/vitest.config.ts
+git commit -m "test: frontend test suite (25 tests, Vitest + RTL)"
+
+git add .github/workflows/
+git commit -m "ci: GitHub Actions workflow for contract tests and web build"
+
+git add scripts/
+git commit -m "chore: automated deployment script"
+
+git add docs/ README.md
+git commit -m "docs: architecture, walkthrough, deployment guide, screenshots"
+```
+
+(Adjust groupings to match what you actually have staged — `git status`
+before each commit to confirm.)
+
+### 3. Create the GitHub repository and push
+
+```bash
+git branch -M main
+```
+
+Create an empty repository at [github.com/new](https://github.com/new) —
+**do not** initialize it with a README, since you already have one — then:
+
+```bash
+git remote add origin https://github.com/<your-username>/commissionchain-ph.git
+git push -u origin main
+```
+
+### 4. Make the repository public
+
+If you created it as private, go to the repo's **Settings → General →
+Danger Zone → Change visibility → Make public**.
+
+### 5. Verify before submitting
+
+- [ ] Repository is public
+- [ ] `web/.env` does not appear anywhere in the repo (check the GitHub
+      file browser directly, not just your local `.gitignore`)
+- [ ] At least 10 commits with descriptive messages, visible in the
+      **Insights → Commits** tab
+- [ ] The **Actions** tab shows the CI workflow has run (it triggers
+      automatically on push)
+- [ ] README renders correctly on the repo's main page, including the
+      screenshots — broken image links usually mean the `docs/screenshots/`
+      files weren't committed
